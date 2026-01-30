@@ -9,7 +9,7 @@ const PEOPLE = [
   "Reinaldo","Rod. Rosa","Samuel","Smile","Tibor","Uekawa","Valbert","Victor"
 ].sort((a,b)=>a.localeCompare(b));
 
-const EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🪴","🎯","🍌","💣"];
+const EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🍪","🪴","🎯","🍌","💣"];
 const MIN_VOTERS = 5;
 // =========================================
 
