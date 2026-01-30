@@ -97,7 +97,7 @@ export default function App() {
   // ----------------- UI -----------------
   if(step==="home") return (
     <div style={styles.container}>
-      <h1>Queridômetro dxs Gaymers</h1>
+      <h1>Queridômetro da Panela</h1>
       <p style={{opacity:0.7}}>📅 {todayFormatted}</p>
       <p>Responde 1x por dia. Reset automático diário (horário de Brasília).</p>
       <button style={styles.mainBtn} onClick={()=>setStep("login")}>Responder</button>
