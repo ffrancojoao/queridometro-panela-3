@@ -16,8 +16,10 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [selected, setSelected] = useState({});
   const [votes, setVotes] = useState({});
-  const [todayFormatted, setTodayFormatted] = useState("");
-  const todayKey = new Date().toISOString().slice(0,10);
+  const brasilNow = new Date(new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }));
+  const todayKey = brasilNow.toISOString().slice(0,10);
+
+  const todayFormatted = brasilNow.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
   const [voteCount, setVoteCount] = useState(0);
 
   useEffect(() => {
