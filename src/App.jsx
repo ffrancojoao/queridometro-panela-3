@@ -1,87 +1,99 @@
 import React, { useState, useEffect } from "react";
-import { supabase } from "./supabase";
 
-const PEOPLE = [
-  "Adriano","Ander","Borda","Chico","Daniel","Diogo","Dru","Eric Aquiar","Fear",
-  "Felype","Flausino","Giordano","Kazuhiro","Marcos","Mello","Paulo","Pelicano",
-  "Pepeu","Prince","Red","Reinaldo","Rod. Rosa","Samuel","Smile","Tibor","Uekawa",
-  "Valbert","Victor"
+// ================= CONFIG =================
+const DEFAULT_PEOPLE = [
+  "Adriano","Ander","Borda","Chico","Daniel","Diogo","Dru","Eric Aquiar","Fear","Felype",
+  "Flausino","Giordano","Kazuhiro","Marcos","Mello","Paulo","Pelicano","Pepeu","Prince",
+  "Red","Reinaldo","Rod. Rosa","Samuel","Smile","Tibor","Uekawa","Valbert","Victor"
 ].sort((a,b)=>a.localeCompare(b));
 
-const EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🪴","🎯"];
+const DEFAULT_EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🪴","🎯"];
+const MIN_VOTERS_TO_SHOW = 5;
+// =========================================
 
 export default function App() {
-  const [step, setStep] = useState("home");
+  const [people] = useState(DEFAULT_PEOPLE);
+  const [emojis] = useState(DEFAULT_EMOJIS);
   const [currentUser, setCurrentUser] = useState("");
   const [password, setPassword] = useState("");
-  const [selected, setSelected] = useState({});
   const [votes, setVotes] = useState({});
+  const [users, setUsers] = useState({}); 
+  const [votedToday, setVotedToday] = useState({}); 
+  const [step, setStep] = useState("home"); 
+  const [selected, setSelected] = useState({}); 
+
+  // ------------------ Data & Reset Diário ------------------
   const brasilNow = new Date(new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }));
   const todayKey = brasilNow.toISOString().slice(0,10);
-
   const todayFormatted = brasilNow.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
-  const [voteCount, setVoteCount] = useState(0);
 
   useEffect(() => {
-    setTodayFormatted(new Date().toLocaleDateString("pt-BR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" }));
-    fetchVotes();
-  }, []);
-
-  // ----------- SUPABASE FUNCS -----------
-
-  async function fetchVotes() {
-    const { data } = await supabase
-      .from("votes")
-      .select("*")
-      .eq("day", todayKey);
-    const map = {};
-    data.forEach(v => {
-      if (!map[v.target]) map[v.target] = {};
-      if (!map[v.target][v.emoji]) map[v.target][v.emoji] = 0;
-      map[v.target][v.emoji] += 1;
-    });
-    setVotes(map);
-    setVoteCount([...new Set(data.map(d=>d.voter))].length);
-  }
-
-  async function checkUser(name) {
-    const { data } = await supabase
-      .from("users")
-      .select("*")
-      .eq("name", name)
-      .single();
-    return data;
-  }
-
-  async function createUser(name, pass) {
-    await supabase.from("users").insert([{ name, password: pass }]);
-  }
-
-  async function verifyVoteToday(name) {
-    const { data } = await supabase
-      .from("votes")
-      .select("*")
-      .eq("voter", name)
-      .eq("day", todayKey);
-    return data.length > 0;
-  }
-
-  async function submitVote() {
-    if (Object.keys(selected).length !== PEOPLE.length - 1) return alert("Vote em todos!");
-    const confirmSend = window.confirm("Confirma envio dos votos? Não poderá alterar depois.");
-    if (!confirmSend) return;
-    const voteArr = [];
-    for (const [target, emoji] of Object.entries(selected)) {
-      voteArr.push({ voter: currentUser, target, emoji, day: todayKey });
+    // Reset diário
+    const storedDate = localStorage.getItem("queridometro_date");
+    if (storedDate !== todayKey) {
+      localStorage.setItem("queridometro_date", todayKey);
+      localStorage.removeItem("queridometro_votes");
+      localStorage.removeItem("queridometro_voted");
     }
-    await supabase.from("votes").insert(voteArr);
-    fetchVotes();
+
+    // Carrega dados
+    setVotes(JSON.parse(localStorage.getItem("queridometro_votes") || "{}"));
+    setUsers(JSON.parse(localStorage.getItem("queridometro_users") || "{}"));
+    setVotedToday(JSON.parse(localStorage.getItem("queridometro_voted") || "{}"));
+    setSelected({});
+  }, [todayKey]);
+
+  function saveVotes(newVotes) {
+    setVotes(newVotes);
+    localStorage.setItem("queridometro_votes", JSON.stringify(newVotes));
+  }
+
+  function saveUsers(newUsers) {
+    setUsers(newUsers);
+    localStorage.setItem("queridometro_users", JSON.stringify(newUsers));
+  }
+
+  function saveVoted(newVoted) {
+    setVotedToday(newVoted);
+    localStorage.setItem("queridometro_voted", JSON.stringify(newVoted));
+  }
+
+  // ------------------ Funções de Voto ------------------
+  function handleVote(person, emoji) {
+    const newVotes = { ...votes };
+    const prevEmoji = selected[person];
+
+    // remove voto anterior
+    if (prevEmoji && newVotes[person] && newVotes[person][prevEmoji]) {
+      newVotes[person][prevEmoji] = Math.max(0, newVotes[person][prevEmoji] - 1);
+    }
+
+    // adiciona novo voto
+    if (!newVotes[person]) newVotes[person] = {};
+    if (!newVotes[person][emoji]) newVotes[person][emoji] = 0;
+    newVotes[person][emoji] += 1;
+
+    saveVotes(newVotes);
+    setSelected({ ...selected, [person]: emoji });
+  }
+
+  function finishVoting() {
+    const targets = people.filter(p => p !== currentUser);
+    const missing = targets.filter(p => !selected[p]);
+    if (missing.length > 0) return alert("Você precisa votar em todos: " + missing.join(", "));
+
+    const confirmSend = window.confirm("Depois de enviar, não será possível alterar seus votos hoje.");
+    if (!confirmSend) return;
+
+    const newVoted = { ...votedToday, [currentUser]: true };
+    saveVoted(newVoted);
     setStep("results");
   }
 
-  // ----------- UI -----------
+  const totalVoters = Object.keys(votedToday).length;
 
-  if(step==="home") return (
+  // ------------------ UI ------------------
+  if (step === "home") return (
     <div style={styles.container}>
       <h1>Queridômetro da Panela</h1>
       <p style={{opacity:0.7}}>📅 {todayFormatted}</p>
@@ -91,89 +103,97 @@ export default function App() {
     </div>
   );
 
-  if(step==="login") return (
+  if (step === "login") return (
     <div style={styles.container}>
       <h1>Identificação</h1>
-      <select value={currentUser} onChange={e=>setCurrentUser(e.target.value)}>
+      <select value={currentUser} onChange={e => setCurrentUser(e.target.value)}>
         <option value="">Selecione seu nome</option>
-        {PEOPLE.map(p=><option key={p}>{p}</option>)}
+        {people.map(p => <option key={p}>{p}</option>)}
       </select>
-      <input type="password" placeholder="Senha" value={password} onChange={e=>setPassword(e.target.value)}/>
-      <button disabled={!currentUser || !password} onClick={async ()=>{
-        const user = await checkUser(currentUser);
-        if(!user) setStep("register");
-        else if(user.password===password){
-          const voted = await verifyVoteToday(currentUser);
-          if(voted) alert("Você já votou hoje!");
-          else setStep("vote");
+      <input type="password" placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} />
+      <button disabled={!currentUser} onClick={() => {
+        if (!users[currentUser]) setStep("register");
+        else if (users[currentUser].password === password) {
+          if (votedToday[currentUser]) alert("Você já respondeu hoje.");
+          else { setSelected({}); setStep("vote"); }
         } else alert("Senha incorreta");
       }}>Entrar</button>
     </div>
   );
 
-  if(step==="register") return (
+  if (step === "register") return (
     <div style={styles.container}>
       <h1>Criar senha</h1>
-      <p>Primeiro acesso de <b>{currentUser}</b></p>
-      <input type="password" placeholder="Nova senha" value={password} onChange={e=>setPassword(e.target.value)}/>
-      <button onClick={async ()=>{
-        if(!password) return alert("Defina uma senha");
-        await createUser(currentUser, password);
+      <p>Primeiro acesso de {currentUser}</p>
+      <input type="password" placeholder="Nova senha" value={password} onChange={e => setPassword(e.target.value)} />
+      <button onClick={() => {
+        if (!password) return alert("Defina uma senha");
+        const newUsers = { ...users, [currentUser]: { password } };
+        saveUsers(newUsers);
+        setSelected({});
         setStep("vote");
       }}>Salvar e Entrar</button>
     </div>
   );
 
-  if(step==="vote") return (
-    <div style={styles.container}>
-      <h1>Distribua seus emojis</h1>
-      <p>Votando como <b>{currentUser}</b> (anônimo)</p>
-      {PEOPLE.filter(p=>p!==currentUser).map(person=>(
-        <div key={person} style={styles.card}>
-          <h3>{person}</h3>
-          <div style={styles.emojiRow}>
-            {EMOJIS.map(e=>(
-              <button
-                key={e}
-                style={{
-                  ...styles.emojiBtn,
-                  background:selected[person]===e?"#22c55e":"#222",
-                  transform:selected[person]===e?"scale(1.2)":"scale(1)",
-                  boxShadow:selected[person]===e?"0 0 12px #22c55e":"none"
-                }}
-                onClick={()=>setSelected({...selected,[person]:e})}
-              >{e}</button>
-            ))}
-          </div>
-        </div>
-      ))}
-      <button style={styles.mainBtn} onClick={submitVote}>Finalizar Voto</button>
-    </div>
-  );
+  if (step === "vote") {
+    const targets = people.filter(p => p !== currentUser);
+    const completed = targets.filter(p => selected[p]).length;
 
-  if(step==="results"){
-    // só libera resultado se 5 pessoas votarem
-    if(voteCount<5){
-      return (
-        <div style={styles.container}>
-          <h1>Resultados do Queridômetro</h1>
-          <p style={{opacity:0.7}}>📅 {todayFormatted}</p>
-          <p>Ainda não há votos suficientes para liberar resultados. (mínimo: 5 pessoas)</p>
-          <button style={styles.mainBtn} onClick={()=>setStep("home")}>Voltar</button>
-        </div>
-      );
-    }
+    return (
+      <div style={styles.container}>
+        <h1>Distribua seus emojis</h1>
+        <p>Votando como <b>{currentUser}</b> (anônimo)</p>
+        <p>Progresso: {completed}/{targets.length}</p>
+        {targets.map(person => (
+          <div key={person} style={styles.card}>
+            <h3>{person}</h3>
+            <div style={styles.emojiRow}>
+              {emojis.map(e => (
+                <button
+                  key={e}
+                  style={{
+                    ...styles.emojiBtn,
+                    background: selected[person] === e ? "#22c55e" : "#222",
+                    transform: selected[person] === e ? "scale(1.2)" : "scale(1)",
+                    boxShadow: selected[person] === e ? "0 0 12px #22c55e" : "none"
+                  }}
+                  onClick={() => handleVote(person, e)}
+                >{e}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+        <button onClick={finishVoting} disabled={completed !== targets.length} style={{opacity: completed !== targets.length ? 0.5 : 1}}>
+          Finalizar Voto
+        </button>
+      </div>
+    );
+  }
+
+  if (step === "results") {
+    const canShow = totalVoters >= MIN_VOTERS_TO_SHOW;
     return (
       <div style={styles.container}>
         <h1>Resultados do Queridômetro</h1>
         <p style={{opacity:0.7}}>📅 {todayFormatted}</p>
-        {PEOPLE.map(person=>(
-          <div key={person} style={{...styles.card, background: currentUser===person?"#333":"#111"}}>
-            <h3>{person}</h3>
-            <div>{EMOJIS.map(e=><span key={e} style={{marginRight:12}}>{e} {votes[person]?.[e]||0}</span>)}</div>
+        <p>👥 Pessoas que já votaram hoje: {totalVoters}</p>
+
+        {!canShow && (
+          <div style={{background:"#111", padding:16, borderRadius:12, color:"#fff"}}>
+            <b>Resultados bloqueados para preservar o anonimato.</b>
+            <p>Serão liberados quando {MIN_VOTERS_TO_SHOW} pessoas votarem.</p>
+          </div>
+        )}
+
+        {canShow && people.map(person => (
+          <div key={person} style={{...styles.card, border: person === currentUser ? "2px solid #22c55e" : "none", background: person === currentUser ? "#0f172a" : "#111"}}>
+            <h3>{person}{person===currentUser?" (você)":""}</h3>
+            <div>{emojis.map(e => <span key={e} style={{marginRight:12}}>{e} {votes[person]?.[e]||0}</span>)}</div>
           </div>
         ))}
-        <button style={styles.mainBtn} onClick={()=>setStep("home")}>Voltar</button>
+
+        <button onClick={()=>setStep("home")}>Voltar</button>
       </div>
     );
   }
