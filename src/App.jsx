@@ -13,6 +13,13 @@ const EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🍪","🪴","🎯"
 const MIN_VOTERS_TO_SHOW = 5;
 // =========================================
 
+// 🇧🇷 DATA BRASILIA (YYYY-MM-DD)
+function getBrazilDay() {
+  return new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Sao_Paulo"
+  });
+}
+
 export default function App() {
   const [step, setStep] = useState("home");
   const [currentUser, setCurrentUser] = useState("");
@@ -22,11 +29,14 @@ export default function App() {
   const [voteCount, setVoteCount] = useState(0);
   const [todayFormatted, setTodayFormatted] = useState("");
 
+  const today = getBrazilDay();
+
   // 📅 Data formatada Brasil
   useEffect(() => {
     const now = new Date();
     setTodayFormatted(
       now.toLocaleDateString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
         weekday:"long", day:"2-digit", month:"long", year:"numeric"
       })
     );
@@ -38,20 +48,21 @@ export default function App() {
   async function fetchVotes() {
     const { data } = await supabase
       .from("votes")
-      .select("*");
+      .select("*")
+      .eq("day", today);
 
     if (!data) return;
 
     const map = {};
     data.forEach(v => {
-      if (!map[v.target_id]) map[v.target_id] = {};
-      if (!map[v.target_id][v.emoji]) map[v.target_id][v.emoji] = 0;
-      map[v.target_id][v.emoji]++;
+      if (!map[v.target]) map[v.target] = {};
+      if (!map[v.target][v.emoji]) map[v.target][v.emoji] = 0;
+      map[v.target][v.emoji]++;
     });
 
     setVotes(map);
 
-    const voters = [...new Set(data.map(d => d.voter_id))];
+    const voters = [...new Set(data.map(d => d.voter))];
     setVoteCount(voters.length);
   }
 
@@ -72,10 +83,11 @@ export default function App() {
     const { data } = await supabase
       .from("votes")
       .select("id")
-      .eq("voter_id", name)
+      .eq("voter", name)
+      .eq("day", today)
       .limit(1);
 
-    return data.length > 0;
+    return data && data.length > 0;
   }
 
   async function submitVote() {
@@ -86,9 +98,10 @@ export default function App() {
     if (!window.confirm("Enviar votos? NÃO poderá alterar depois.")) return;
 
     const arr = Object.entries(selected).map(([target, emoji]) => ({
-      voter_id: currentUser,
-      target_id: target,
-      emoji
+      voter: currentUser,
+      target,
+      emoji,
+      day: today
     }));
 
     await supabase.from("votes").insert(arr);
@@ -110,6 +123,7 @@ export default function App() {
   if (step === "login") return (
     <div style={styles.container}>
       <h2>Identificação</h2>
+
       <select value={currentUser} onChange={e=>setCurrentUser(e.target.value)}>
         <option value="">Selecione seu nome</option>
         {PEOPLE.map(p=><option key={p}>{p}</option>)}
@@ -141,12 +155,14 @@ export default function App() {
   if (step === "register") return (
     <div style={styles.container}>
       <h2>Criar senha</h2>
+
       <input
         type="password"
         placeholder="Nova senha"
         value={password}
         onChange={e=>setPassword(e.target.value)}
       />
+
       <button onClick={async ()=>{
         if (!password) return alert("Digite senha");
         await createUser(currentUser, password);
@@ -160,6 +176,7 @@ export default function App() {
   if (step === "vote") return (
     <div style={styles.container}>
       <h2>Vote nos outros</h2>
+
       {PEOPLE.filter(p=>p!==currentUser).map(person=>(
         <div key={person} style={styles.card}>
           <h3>{person}</h3>
@@ -168,7 +185,8 @@ export default function App() {
               key={e}
               style={{
                 fontSize:24,
-                background:selected[person]===e?"#22c55e":"#333"
+                background:selected[person]===e?"#22c55e":"#333",
+                margin:4
               }}
               onClick={()=>setSelected({...selected,[person]:e})}
             >
@@ -195,7 +213,8 @@ export default function App() {
 
     return (
       <div style={styles.container}>
-        <h2>Resultados</h2>
+        <h2>Resultados de Hoje</h2>
+
         {PEOPLE.map(p=>(
           <div key={p} style={styles.card}>
             <h3>{p}</h3>
@@ -206,6 +225,7 @@ export default function App() {
             ))}
           </div>
         ))}
+
         <button onClick={()=>setStep("home")}>Voltar</button>
       </div>
     );
