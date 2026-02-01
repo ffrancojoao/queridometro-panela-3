@@ -149,7 +149,7 @@ export default function App() {
 
   if (step === "home") return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Queridômetro dxs Gaymers</h1>
+      <h1 style={styles.title}>Queridômetro (Rançômetro) da Panela!</h1>
       <p style={styles.date}>📅 {todayFormatted}</p>
 
       <button style={styles.mainBtn} onClick={()=>goStep("login")}>Responder</button>
