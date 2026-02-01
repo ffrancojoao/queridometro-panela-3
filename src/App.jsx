@@ -3,77 +3,64 @@ import { supabase } from "./supabase";
 
 // ================= CONFIG =================
 const PEOPLE = [
-  "Adriano","Ander","Borda","Chico","Daniel","Diogo","Dru","Eric Aquiar","Fear","Felype","Flausino","Giordano","Kazuhiro","Marcos","Mello","Paulo","Pelicano","Pepeu","Prince","Red","Reinaldo","Rod. Rosa","Samuel","Smile","Tibor","Uekawa","Valbert","Victor"
+  "Adriano","Ander","Borda","Chico","Daniel","Diogo","Dru","Eric Aquiar",
+  "Fear","Felype","Flausino","Giordano","Kazuhiro","Marcos","Mello","Paulo",
+  "Pelicano","Pepeu","Prince","Red","Reinaldo","Rod. Rosa","Samuel",
+  "Smile","Tibor","Uekawa","Valbert","Victor"
 ].sort((a,b)=>a.localeCompare(b));
 
 const EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🍪","🪴","🎯","🍌","💣"];
 const MIN_VOTERS_TO_SHOW = 5;
-
-// 🔐 CÓDIGO SECRETO DE RESET (SÓ VOCÊ SABE)
-const ADMIN_RESET_CODE = "panelabbb";
 // =========================================
-
-// ===== FUNÇÃO DE DATA NO FUSO BRASILIA =====
-function getBrazilDateKey() {
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  });
-  return formatter.format(now); // YYYY-MM-DD
-}
-
-function getBrazilFormattedDate() {
-  return new Date().toLocaleDateString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric"
-  });
-}
 
 export default function App() {
   const [step, setStep] = useState("home");
   const [currentUser, setCurrentUser] = useState("");
   const [password, setPassword] = useState("");
-  const [resetCode, setResetCode] = useState("");
-
   const [selected, setSelected] = useState({});
   const [votes, setVotes] = useState({});
   const [voteCount, setVoteCount] = useState(0);
+  const [todayFormatted, setTodayFormatted] = useState("");
 
-  const todayKey = getBrazilDateKey();
-  const todayFormatted = getBrazilFormattedDate();
-
-  // ================= LOAD DATA =================
+  // 📅 Data formatada Brasil
   useEffect(() => {
+    const now = new Date();
+    setTodayFormatted(
+      now.toLocaleDateString("pt-BR", {
+        weekday:"long", day:"2-digit", month:"long", year:"numeric"
+      })
+    );
     fetchVotes();
   }, []);
+
+  // ================= SUPABASE =================
 
   async function fetchVotes() {
     const { data } = await supabase
       .from("votes")
-      .select("*")
-      .eq("day", todayKey);
+      .select("*");
+
+    if (!data) return;
 
     const map = {};
-    data?.forEach(v => {
-      if (!map[v.target]) map[v.target] = {};
-      if (!map[v.target][v.emoji]) map[v.target][v.emoji] = 0;
-      map[v.target][v.emoji] += 1;
+    data.forEach(v => {
+      if (!map[v.target_id]) map[v.target_id] = {};
+      if (!map[v.target_id][v.emoji]) map[v.target_id][v.emoji] = 0;
+      map[v.target_id][v.emoji]++;
     });
 
     setVotes(map);
-    const voters = [...new Set(data?.map(d => d.voter))];
+
+    const voters = [...new Set(data.map(d => d.voter_id))];
     setVoteCount(voters.length);
   }
 
-  // ================= USERS =================
   async function checkUser(name) {
-    const { data } = await supabase.from("users").select("*").eq("name", name).single();
+    const { data } = await supabase
+      .from("users")
+      .select("*")
+      .eq("name", name)
+      .single();
     return data;
   }
 
@@ -81,103 +68,95 @@ export default function App() {
     await supabase.from("users").insert([{ name, password: pass }]);
   }
 
-  async function resetUserPassword(name, newPass) {
-    await supabase.from("users").update({ password: newPass }).eq("name", name);
-  }
-
   async function verifyVoteToday(name) {
     const { data } = await supabase
       .from("votes")
       .select("id")
-      .eq("voter", name)
-      .eq("day", todayKey);
-    return data?.length > 0;
+      .eq("voter_id", name)
+      .limit(1);
+
+    return data.length > 0;
   }
 
-  // ================= VOTING =================
   async function submitVote() {
     if (Object.keys(selected).length !== PEOPLE.length - 1) {
-      return alert("Vote em TODAS as pessoas");
+      return alert("Vote em TODOS!");
     }
 
-    if (!window.confirm("Confirma envio? Depois não poderá editar.")) return;
+    if (!window.confirm("Enviar votos? NÃO poderá alterar depois.")) return;
 
-    const rows = Object.entries(selected).map(([target, emoji]) => ({
-      voter: currentUser,
-      target,
-      emoji,
-      day: todayKey
+    const arr = Object.entries(selected).map(([target, emoji]) => ({
+      voter_id: currentUser,
+      target_id: target,
+      emoji
     }));
 
-    await supabase.from("votes").insert(rows);
+    await supabase.from("votes").insert(arr);
     fetchVotes();
     setStep("results");
   }
 
   // ================= UI =================
+
   if (step === "home") return (
     <div style={styles.container}>
       <h1>Queridômetro da Panela</h1>
       <p>📅 {todayFormatted}</p>
-      <button style={styles.mainBtn} onClick={()=>setStep("login")}>Responder</button>
-      <button style={styles.mainBtn} onClick={()=>setStep("results")}>Ver Resultados</button>
-      <button style={styles.mainBtn} onClick={()=>setStep("reset")}>Resetar Senha</button>
+      <button onClick={()=>setStep("login")}>Responder</button>
+      <button onClick={()=>setStep("results")}>Ver Resultados</button>
     </div>
   );
 
-  // LOGIN
   if (step === "login") return (
     <div style={styles.container}>
-      <h2>Login</h2>
+      <h2>Identificação</h2>
       <select value={currentUser} onChange={e=>setCurrentUser(e.target.value)}>
         <option value="">Selecione seu nome</option>
         {PEOPLE.map(p=><option key={p}>{p}</option>)}
       </select>
-      <input type="password" placeholder="Senha" value={password} onChange={e=>setPassword(e.target.value)} />
+
+      <input
+        type="password"
+        placeholder="Senha"
+        value={password}
+        onChange={e=>setPassword(e.target.value)}
+      />
+
       <button onClick={async ()=>{
         const user = await checkUser(currentUser);
-        if(!user) return setStep("register");
-        if(user.password !== password) return alert("Senha incorreta");
+        if (!user) return setStep("register");
+
+        if (user.password !== password) return alert("Senha incorreta");
+
         const voted = await verifyVoteToday(currentUser);
-        if(voted) return alert("Você já votou hoje");
+        if (voted) return alert("Você já votou hoje!");
+
         setStep("vote");
-      }}>Entrar</button>
+      }}>
+        Entrar
+      </button>
     </div>
   );
 
-  // REGISTER
   if (step === "register") return (
     <div style={styles.container}>
       <h2>Criar senha</h2>
-      <p>{currentUser}</p>
-      <input type="password" placeholder="Nova senha" value={password} onChange={e=>setPassword(e.target.value)} />
+      <input
+        type="password"
+        placeholder="Nova senha"
+        value={password}
+        onChange={e=>setPassword(e.target.value)}
+      />
       <button onClick={async ()=>{
+        if (!password) return alert("Digite senha");
         await createUser(currentUser, password);
         setStep("vote");
-      }}>Salvar</button>
+      }}>
+        Salvar
+      </button>
     </div>
   );
 
-  // RESET PASSWORD (COM CÓDIGO SECRETO)
-  if (step === "reset") return (
-    <div style={styles.container}>
-      <h2>Resetar Senha</h2>
-      <select value={currentUser} onChange={e=>setCurrentUser(e.target.value)}>
-        <option value="">Selecione seu nome</option>
-        {PEOPLE.map(p=><option key={p}>{p}</option>)}
-      </select>
-      <input placeholder="Código secreto do admin" value={resetCode} onChange={e=>setResetCode(e.target.value)} />
-      <input type="password" placeholder="Nova senha" value={password} onChange={e=>setPassword(e.target.value)} />
-      <button onClick={async ()=>{
-        if(resetCode !== ADMIN_RESET_CODE) return alert("Código inválido");
-        await resetUserPassword(currentUser, password);
-        alert("Senha resetada com sucesso");
-        setStep("home");
-      }}>Resetar</button>
-    </div>
-  );
-
-  // VOTE
   if (step === "vote") return (
     <div style={styles.container}>
       <h2>Vote nos outros</h2>
@@ -185,39 +164,55 @@ export default function App() {
         <div key={person} style={styles.card}>
           <h3>{person}</h3>
           {EMOJIS.map(e=>(
-            <button key={e}
-              style={{...styles.emojiBtn, background:selected[person]===e?"#22c55e":"#222"}}
+            <button
+              key={e}
+              style={{
+                fontSize:24,
+                background:selected[person]===e?"#22c55e":"#333"
+              }}
               onClick={()=>setSelected({...selected,[person]:e})}
-            >{e}</button>
+            >
+              {e}
+            </button>
           ))}
         </div>
       ))}
-      <button style={styles.mainBtn} onClick={submitVote}>Finalizar</button>
+
+      <button onClick={submitVote}>Finalizar</button>
     </div>
   );
 
-  // RESULTS
-  if (step === "results") return (
-    <div style={styles.container}>
-      <h2>Resultados</h2>
-      <p>Votantes hoje: {voteCount}</p>
-      {voteCount < MIN_VOTERS_TO_SHOW && <p>Resultados bloqueados até {MIN_VOTERS_TO_SHOW} votos.</p>}
-      {voteCount >= MIN_VOTERS_TO_SHOW && PEOPLE.map(person=> (
-        <div key={person} style={styles.card}>
-          <b>{person}</b><br/>
-          {EMOJIS.map(e=> <span key={e}>{e} {votes[person]?.[e]||0} </span>)}
+  if (step === "results") {
+    if (voteCount < MIN_VOTERS_TO_SHOW) {
+      return (
+        <div style={styles.container}>
+          <h2>Resultados bloqueados</h2>
+          <p>{voteCount}/{MIN_VOTERS_TO_SHOW} votantes</p>
+          <button onClick={()=>setStep("home")}>Voltar</button>
         </div>
-      ))}
-      <button onClick={()=>setStep("home")}>Voltar</button>
-    </div>
-  );
+      );
+    }
 
-  return null;
+    return (
+      <div style={styles.container}>
+        <h2>Resultados</h2>
+        {PEOPLE.map(p=>(
+          <div key={p} style={styles.card}>
+            <h3>{p}</h3>
+            {EMOJIS.map(e=>(
+              <span key={e} style={{marginRight:12}}>
+                {e} {votes[p]?.[e] || 0}
+              </span>
+            ))}
+          </div>
+        ))}
+        <button onClick={()=>setStep("home")}>Voltar</button>
+      </div>
+    );
+  }
 }
 
 const styles = {
-  container:{ maxWidth:700, margin:"40px auto", fontFamily:"sans-serif", textAlign:"center" },
-  card:{ background:"#111", color:"#fff", padding:12, margin:10, borderRadius:10 },
-  emojiBtn:{ fontSize:22, padding:8, margin:4, borderRadius:10, border:"none", cursor:"pointer" },
-  mainBtn:{ fontSize:16, padding:"10px 20px", margin:10, borderRadius:10, border:"none", cursor:"pointer" }
+  container:{ maxWidth:700, margin:"40px auto", textAlign:"center" },
+  card:{ background:"#111", color:"#fff", padding:12, margin:10, borderRadius:10 }
 };
