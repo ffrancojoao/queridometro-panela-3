@@ -17,61 +17,57 @@ export default function App() {
   const [step, setStep] = useState("home");
   const [currentUser, setCurrentUser] = useState("");
   const [password, setPassword] = useState("");
-  const [resetCode, setResetCode] = useState("");
   const [selected, setSelected] = useState({});
-  const [votesToday, setVotesToday] = useState({});
-  const [votesYesterday, setVotesYesterday] = useState({});
-  const [voteCountToday, setVoteCountToday] = useState(0);
+  const [votes, setVotes] = useState({});
+  const [voteCount, setVoteCount] = useState(0);
   const [todayFormatted, setTodayFormatted] = useState("");
 
-  // ================= DATE (Brasilia) =================
-  const getBrazilDateKey = (offsetDays = 0) => {
-    const now = new Date();
-    const brTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-    brTime.setDate(brTime.getDate() + offsetDays);
-    return brTime.toISOString().slice(0,10);
-  };
+  // 🇧🇷 Data Brasil
+  const todayBR = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Sao_Paulo"
+  });
 
-  const todayKey = getBrazilDateKey(0);
-  const yesterdayKey = getBrazilDateKey(-1);
-
+  // Data bonita
   useEffect(() => {
-    const now = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday:"long", day:"2-digit", month:"long", year:"numeric" });
-    setTodayFormatted(now);
-    fetchVotesToday();
-    fetchVotesYesterday();
+    const now = new Date();
+    setTodayFormatted(
+      now.toLocaleDateString("pt-BR", {
+        weekday:"long", day:"2-digit", month:"long", year:"numeric",
+        timeZone:"America/Sao_Paulo"
+      })
+    );
+    fetchVotes();
   }, []);
 
   // ================= SUPABASE =================
 
-  async function fetchVotesToday() {
-    const { data } = await supabase.from("votes").select("*").eq("day", todayKey);
-    if (!data) return;
-    const map = {};
-    data.forEach(v => {
-      if (!map[v.target]) map[v.target] = {};
-      if (!map[v.target][v.emoji]) map[v.target][v.emoji] = 0;
-      map[v.target][v.emoji]++;
-    });
-    setVotesToday(map);
-    const voters = [...new Set(data.map(d => d.voter))];
-    setVoteCountToday(voters.length);
-  }
+  async function fetchVotes() {
+    const { data } = await supabase
+      .from("votes")
+      .select("*")
+      .eq("day", todayBR);
 
-  async function fetchVotesYesterday() {
-    const { data } = await supabase.from("votes").select("*").eq("day", yesterdayKey);
     if (!data) return;
+
     const map = {};
     data.forEach(v => {
       if (!map[v.target]) map[v.target] = {};
       if (!map[v.target][v.emoji]) map[v.target][v.emoji] = 0;
       map[v.target][v.emoji]++;
     });
-    setVotesYesterday(map);
+
+    setVotes(map);
+
+    const voters = [...new Set(data.map(d => d.voter))];
+    setVoteCount(voters.length);
   }
 
   async function checkUser(name) {
-    const { data } = await supabase.from("users").select("*").eq("name", name).single();
+    const { data } = await supabase
+      .from("users")
+      .select("*")
+      .eq("name", name)
+      .single();
     return data;
   }
 
@@ -80,196 +76,227 @@ export default function App() {
   }
 
   async function verifyVoteToday(name) {
-    const { data } = await supabase.from("votes").select("id").eq("voter", name).eq("day", todayKey).limit(1);
+    const { data } = await supabase
+      .from("votes")
+      .select("id")
+      .eq("voter", name)
+      .eq("day", todayBR)
+      .limit(1);
+
     return data && data.length > 0;
   }
 
   async function submitVote() {
-    if (Object.keys(selected).length !== PEOPLE.length - 1) return alert("Vote em TODOS!");
-    if (!window.confirm("Enviar votos? Não poderá alterar.")) return;
+    if (Object.keys(selected).length !== PEOPLE.length - 1) {
+      return alert("Você precisa votar em TODOS para enviar.");
+    }
+
+    if (!window.confirm("Tem certeza? Depois de enviar, NÃO poderá editar hoje.")) return;
 
     const arr = Object.entries(selected).map(([target, emoji]) => ({
       voter: currentUser,
       target,
       emoji,
-      day: todayKey
+      day: todayBR
     }));
 
     await supabase.from("votes").insert(arr);
-    await fetchVotesToday();
-    setStep("resultsToday");
+    await fetchVotes();
+    setStep("results");
   }
 
-  async function resetPassword() {
-    const { data, error } = await supabase.rpc("reset_user_password", {
-      p_name: currentUser,
-      p_secret: resetCode
-    });
+  // ================= UI COMPONENTS =================
 
-    if (error) return alert("Código secreto inválido");
-    alert("Senha resetada! Crie uma nova ao entrar.");
-    setStep("login");
+  function ProgressBar({ value, max }) {
+    const percent = Math.round((value / max) * 100);
+    return (
+      <div style={{ width:"100%", background:"#222", borderRadius:10, margin:"10px 0" }}>
+        <div style={{
+          width: percent+"%",
+          background:"#22c55e",
+          padding:6,
+          borderRadius:10,
+          textAlign:"center",
+          fontWeight:"bold",
+          color:"#000"
+        }}>
+          {percent}%
+        </div>
+      </div>
+    );
   }
 
-  // ================= TOP EMOJI (ONTEM) =================
-  function getTopEmoji(votesMap) {
-    const result = {};
-    EMOJIS.forEach(e => {
-      let max = 0;
-      let names = [];
-      PEOPLE.forEach(p => {
-        const count = votesMap[p]?.[e] || 0;
-        if (count > max) {
-          max = count;
-          names = [p];
-        } else if (count === max && count > 0) {
-          names.push(p);
-        }
-      });
-      result[e] = { max, names };
-    });
-    return result;
-  }
-
-  const topYesterday = getTopEmoji(votesYesterday);
-
-  // ================= UI =================
-
-  const Button = ({children, onClick}) => (
-    <button onClick={onClick} style={styles.btn}>{children}</button>
-  );
+  // ================= HOME =================
 
   if (step === "home") return (
     <div style={styles.container}>
-      <h1>Queridômetro da Panela</h1>
-      <p>📅 {todayFormatted}</p>
-      <Button onClick={()=>setStep("login")}>Responder</Button>
-      <Button onClick={()=>setStep("resultsToday")}>Resultados Hoje</Button>
-      <Button onClick={()=>setStep("history")}>Histórico Ontem</Button>
-      <Button onClick={()=>setStep("reset")}>Esqueci Senha</Button>
+      <h1 style={styles.title}>Queridômetro da Panela</h1>
+      <p style={styles.subtitle}>📅 {todayFormatted}</p>
+
+      <button style={styles.mainBtn} onClick={()=>setStep("login")}>Responder</button>
+      <button style={styles.mainBtnOutline} onClick={()=>setStep("results")}>Resultados Hoje</button>
     </div>
   );
 
-  // LOGIN
+  // ================= LOGIN =================
+
   if (step === "login") return (
     <div style={styles.container}>
-      <h2>Entrar</h2>
-      <select value={currentUser} onChange={e=>setCurrentUser(e.target.value)} style={styles.input}>
+      <h2>Identificação</h2>
+
+      <select style={styles.select} value={currentUser} onChange={e=>setCurrentUser(e.target.value)}>
         <option value="">Selecione seu nome</option>
         {PEOPLE.map(p=><option key={p}>{p}</option>)}
       </select>
-      <input type="password" placeholder="Senha" value={password} onChange={e=>setPassword(e.target.value)} style={styles.input}/>
-      <Button onClick={async ()=>{
+
+      <input
+        style={styles.input}
+        type="password"
+        placeholder="Senha"
+        value={password}
+        onChange={e=>setPassword(e.target.value)}
+      />
+
+      <button style={styles.mainBtn} onClick={async ()=>{
         const user = await checkUser(currentUser);
         if (!user) return setStep("register");
+
         if (user.password !== password) return alert("Senha incorreta");
+
         const voted = await verifyVoteToday(currentUser);
-        if (voted) return alert("Você já votou hoje");
+        if (voted) return alert("Você já votou hoje!");
+
         setStep("vote");
-      }}>Entrar</Button>
-      <Button onClick={()=>setStep("home")}>Voltar</Button>
+      }}>
+        Entrar
+      </button>
     </div>
   );
 
-  // REGISTER
+  // ================= REGISTER =================
+
   if (step === "register") return (
     <div style={styles.container}>
-      <h2>Criar Senha</h2>
-      <input type="password" placeholder="Nova senha" value={password} onChange={e=>setPassword(e.target.value)} style={styles.input}/>
-      <Button onClick={async ()=>{
+      <h2>Criar senha</h2>
+      <p>Primeiro acesso de <b>{currentUser}</b></p>
+
+      <input
+        style={styles.input}
+        type="password"
+        placeholder="Nova senha"
+        value={password}
+        onChange={e=>setPassword(e.target.value)}
+      />
+
+      <button style={styles.mainBtn} onClick={async ()=>{
         if (!password) return alert("Digite uma senha");
         await createUser(currentUser, password);
         setStep("vote");
-      }}>Salvar</Button>
+      }}>
+        Salvar e Votar
+      </button>
     </div>
   );
 
-  // RESET PASSWORD
-  if (step === "reset") return (
-    <div style={styles.container}>
-      <h2>Resetar Senha</h2>
-      <select value={currentUser} onChange={e=>setCurrentUser(e.target.value)} style={styles.input}>
-        <option value="">Selecione seu nome</option>
-        {PEOPLE.map(p=><option key={p}>{p}</option>)}
-      </select>
-      <input placeholder="Código secreto do admin" value={resetCode} onChange={e=>setResetCode(e.target.value)} style={styles.input}/>
-      <Button onClick={resetPassword}>Resetar</Button>
-      <Button onClick={()=>setStep("home")}>Voltar</Button>
-    </div>
-  );
+  // ================= VOTING =================
 
-  // VOTE
-  if (step === "vote") return (
-    <div style={styles.container}>
-      <h2>Vote nos outros</h2>
-      {PEOPLE.filter(p=>p!==currentUser).map(person=> (
-        <div key={person} style={styles.card}>
-          <h3>{person}</h3>
-          <div style={styles.emojiRow}>
-            {EMOJIS.map(e=> (
-              <button key={e} style={{...styles.emojiBtn, background:selected[person]===e?"#22c55e":"#222"}} onClick={()=>setSelected({...selected,[person]:e})}>{e}</button>
-            ))}
-          </div>
-        </div>
-      ))}
-      <Button onClick={submitVote}>Finalizar</Button>
-    </div>
-  );
+  if (step === "vote") {
+    const progress = Object.keys(selected).length;
+    const total = PEOPLE.length - 1;
 
-  // RESULTS TODAY
-  if (step === "resultsToday") {
-    if (voteCountToday < MIN_VOTERS_TO_SHOW) return (
+    return (
       <div style={styles.container}>
-        <h2>Resultados bloqueados</h2>
-        <p>{voteCountToday}/{MIN_VOTERS_TO_SHOW} votantes</p>
-        <Button onClick={()=>setStep("home")}>Voltar</Button>
+        <h2>Distribua seus emojis</h2>
+        <p>Votando como <b>{currentUser}</b></p>
+
+        <p>Progresso: {progress}/{total}</p>
+        <ProgressBar value={progress} max={total} />
+
+        {PEOPLE.filter(p=>p!==currentUser).map(person=>(
+          <div key={person} style={styles.card}>
+            <h3>{person}</h3>
+            <div style={styles.emojiRow}>
+              {EMOJIS.map(e=>(
+                <button
+                  key={e}
+                  style={{
+                    ...styles.emojiBtn,
+                    background:selected[person]===e?"#22c55e":"#222",
+                    transform:selected[person]===e?"scale(1.2)":"scale(1)"
+                  }}
+                  onClick={()=>setSelected({...selected,[person]:e})}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <button
+          style={{
+            ...styles.mainBtn,
+            background: progress === total ? "#22c55e" : "#555",
+            color:"#000"
+          }}
+          disabled={progress !== total}
+          onClick={submitVote}
+        >
+          ✅ Finalizar e Enviar Votos
+        </button>
       </div>
     );
+  }
+
+  // ================= RESULTS =================
+
+  if (step === "results") {
+    if (voteCount < MIN_VOTERS_TO_SHOW) {
+      return (
+        <div style={styles.container}>
+          <h2>Resultados bloqueados 🔒</h2>
+          <p>Para preservar o anonimato, os resultados só aparecem após {MIN_VOTERS_TO_SHOW} pessoas votarem.</p>
+          <p><b>Já votaram: {voteCount} de {MIN_VOTERS_TO_SHOW}</b></p>
+          <ProgressBar value={voteCount} max={MIN_VOTERS_TO_SHOW} />
+          <button style={styles.mainBtnOutline} onClick={()=>setStep("home")}>Voltar</button>
+        </div>
+      );
+    }
 
     return (
       <div style={styles.container}>
         <h2>Resultados de Hoje</h2>
-        {PEOPLE.map(p=> (
+        <p>👥 {voteCount} pessoas votaram</p>
+
+        {PEOPLE.map(p=>(
           <div key={p} style={styles.card}>
             <h3>{p}</h3>
-            {EMOJIS.map(e=> <span key={e} style={{marginRight:10}}>{e} {votesToday[p]?.[e]||0}</span>)}
+            {EMOJIS.map(e=>(
+              <span key={e} style={{marginRight:12}}>
+                {e} {votes[p]?.[e] || 0}
+              </span>
+            ))}
           </div>
         ))}
-        <Button onClick={()=>setStep("home")}>Voltar</Button>
+
+        <button style={styles.mainBtnOutline} onClick={()=>setStep("home")}>Voltar</button>
       </div>
     );
   }
-
-  // HISTORY YESTERDAY
-  if (step === "history") return (
-    <div style={styles.container}>
-      <h2>Histórico de Ontem ({yesterdayKey})</h2>
-
-      <h3>🏆 Top por Emoji</h3>
-      {EMOJIS.map(e=> (
-        <div key={e} style={styles.card}>
-          <b>{e}</b> → {topYesterday[e].names.join(", ") || "Ninguém"} ({topYesterday[e].max})
-        </div>
-      ))}
-
-      <h3>📊 Detalhado</h3>
-      {PEOPLE.map(p=> (
-        <div key={p} style={styles.card}>
-          <h4>{p}</h4>
-          {EMOJIS.map(e=> <span key={e} style={{marginRight:10}}>{e} {votesYesterday[p]?.[e]||0}</span>)}
-        </div>
-      ))}
-      <Button onClick={()=>setStep("home")}>Voltar</Button>
-    </div>
-  );
 }
 
 // ================= STYLE =================
+
 const styles = {
-  container:{ maxWidth:800, margin:"30px auto", fontFamily:"Arial", textAlign:"center" },
-  btn:{ padding:"12px 20px", margin:8, fontSize:16, borderRadius:10, border:"none", cursor:"pointer", background:"#2563eb", color:"white" },
-  input:{ padding:10, margin:8, fontSize:16, borderRadius:8 },
-  card:{ background:"#111", color:"white", padding:12, margin:10, borderRadius:12 },
-  emojiRow:{ display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center" },
-  emojiBtn:{ fontSize:26, padding:8, borderRadius:10, border:"none", cursor:"pointer" }
+  container:{ maxWidth:720, margin:"40px auto", textAlign:"center", fontFamily:"Inter, sans-serif", color:"#fff" },
+  title:{ fontSize:34, fontWeight:"bold" },
+  subtitle:{ opacity:0.7 },
+  card:{ background:"#111", padding:16, marginBottom:12, borderRadius:14, boxShadow:"0 0 12px rgba(0,0,0,0.5)" },
+  emojiRow:{ display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center" },
+  emojiBtn:{ fontSize:26, padding:10, borderRadius:12, border:"none", cursor:"pointer", transition:"0.15s" },
+  input:{ padding:12, borderRadius:10, border:"none", margin:8, width:"100%" },
+  select:{ padding:12, borderRadius:10, border:"none", margin:8, width:"100%" },
+  mainBtn:{ fontSize:18, padding:"12px 22px", borderRadius:12, border:"none", cursor:"pointer", marginTop:12 },
+  mainBtnOutline:{ fontSize:16, padding:"10px 18px", borderRadius:12, border:"1px solid #22c55e", background:"transparent", color:"#22c55e", cursor:"pointer", marginTop:12 }
 };
+
