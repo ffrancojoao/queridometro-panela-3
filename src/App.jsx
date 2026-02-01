@@ -17,25 +17,27 @@ export default function App() {
   const [step, setStep] = useState("home");
   const [currentUser, setCurrentUser] = useState("");
   const [password, setPassword] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [newPass, setNewPass] = useState("");
   const [selected, setSelected] = useState({});
-  const [votesToday, setVotesToday] = useState({});
-  const [votesYesterday, setVotesYesterday] = useState([]);
+  const [votes, setVotes] = useState({});
   const [voteCount, setVoteCount] = useState(0);
+
+  const [yesterdayVotes, setYesterdayVotes] = useState({});
+  const [yesterdayTop, setYesterdayTop] = useState({});
   const [todayFormatted, setTodayFormatted] = useState("");
+  const [yesterdayFormatted, setYesterdayFormatted] = useState("");
 
   // 🇧🇷 Datas
-  const todayBR = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-  const yesterdayBR = new Date(Date.now() - 86400000).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const todayBR = new Date().toLocaleDateString("en-CA", { timeZone:"America/Sao_Paulo" });
+  const yesterdayBR = new Date(Date.now() - 86400000).toLocaleDateString("en-CA", { timeZone:"America/Sao_Paulo" });
 
-  // ================= INIT =================
   useEffect(() => {
     const now = new Date();
-    setTodayFormatted(
-      now.toLocaleDateString("pt-BR", {
-        weekday:"long", day:"2-digit", month:"long", year:"numeric",
-        timeZone:"America/Sao_Paulo"
-      })
-    );
+    const y = new Date(Date.now() - 86400000);
+
+    setTodayFormatted(now.toLocaleDateString("pt-BR",{ timeZone:"America/Sao_Paulo" }));
+    setYesterdayFormatted(y.toLocaleDateString("pt-BR",{ timeZone:"America/Sao_Paulo" }));
 
     fetchTodayVotes();
     fetchYesterdayVotes();
@@ -48,20 +50,42 @@ export default function App() {
     if (!data) return;
 
     const map = {};
-    data.forEach(v => {
-      if (!map[v.target]) map[v.target] = {};
-      if (!map[v.target][v.emoji]) map[v.target][v.emoji] = 0;
-      map[v.target][v.emoji]++;
+    data.forEach(v=>{
+      if(!map[v.target]) map[v.target]={};
+      map[v.target][v.emoji]=(map[v.target][v.emoji]||0)+1;
     });
-    setVotesToday(map);
 
-    const voters = [...new Set(data.map(d => d.voter))];
-    setVoteCount(voters.length);
+    setVotes(map);
+    setVoteCount([...new Set(data.map(d=>d.voter))].length);
   }
 
   async function fetchYesterdayVotes() {
     const { data } = await supabase.from("votes").select("*").eq("day", yesterdayBR);
-    setVotesYesterday(data || []);
+    if (!data) return;
+
+    const map = {};
+    const top = {};
+
+    data.forEach(v=>{
+      if(!map[v.target]) map[v.target]={};
+      map[v.target][v.emoji]=(map[v.target][v.emoji]||0)+1;
+
+      if(!top[v.emoji]) top[v.emoji]={};
+      top[v.emoji][v.target]=(top[v.emoji][v.target]||0)+1;
+    });
+
+    // calcula TOP por emoji
+    const topResult = {};
+    for(const emoji of EMOJIS){
+      const entries = Object.entries(top[emoji]||{}).sort((a,b)=>b[1]-a[1]);
+      if(entries.length){
+        const max = entries[0][1];
+        topResult[emoji] = entries.filter(e=>e[1]===max);
+      }
+    }
+
+    setYesterdayVotes(map);
+    setYesterdayTop(topResult);
   }
 
   async function checkUser(name) {
@@ -81,11 +105,11 @@ export default function App() {
 
   async function submitVote() {
     if (Object.keys(selected).length !== PEOPLE.length - 1)
-      return alert("Você precisa votar em TODOS!");
+      return alert("Vote em TODOS!");
 
-    if (!window.confirm("Confirmar envio? NÃO poderá editar hoje.")) return;
+    if (!window.confirm("Confirmar envio? NÃO poderá alterar.")) return;
 
-    const arr = Object.entries(selected).map(([target, emoji]) => ({
+    const arr = Object.entries(selected).map(([target, emoji])=>({
       voter: currentUser,
       target,
       emoji,
@@ -97,82 +121,52 @@ export default function App() {
     setStep("results");
   }
 
-  // ================= RANKING YESTERDAY =================
+  async function resetPassword() {
+    if(!currentUser || !resetCode || !newPass) return alert("Preencha tudo!");
 
-  function calculateYesterdayRanking() {
-    const score = {};
-
-    votesYesterday.forEach(v => {
-      if (!score[v.target]) score[v.target] = 0;
-      score[v.target]++;
+    const { error } = await supabase.rpc("reset_user_password", {
+      p_name: currentUser,
+      p_secret: resetCode,
+      p_new_password: newPass
     });
 
-    return Object.entries(score)
-      .sort((a,b)=>b[1]-a[1])
-      .map(([name, total]) => ({ name, total }));
+    if(error) return alert("Código secreto errado!");
+    alert("Senha resetada!");
+    setStep("login");
   }
 
-  function calculateTopEmojiYesterday() {
-    const map = {};
-    votesYesterday.forEach(v => {
-      const key = v.emoji + "|" + v.target;
-      if (!map[key]) map[key] = 0;
-      map[key]++;
-    });
-
-    const result = {};
-    EMOJIS.forEach(e => {
-      const filtered = Object.entries(map).filter(([k])=>k.startsWith(e+"|"));
-      if (filtered.length === 0) return;
-      const best = filtered.sort((a,b)=>b[1]-a[1])[0];
-      result[e] = { name: best[0].split("|")[1], total: best[1] };
-    });
-
-    return result;
-  }
-
-  const rankingYesterday = calculateYesterdayRanking();
-  const topEmojiYesterday = calculateTopEmojiYesterday();
-
-  // ================= COMPONENTS =================
+  // ================= UI COMPONENTS =================
 
   function ProgressBar({ value, max }) {
     const percent = Math.round((value / max) * 100);
     return (
-      <div style={{ width:"100%", background:"#222", borderRadius:10 }}>
-        <div style={{
-          width: percent+"%",
-          background:"#22c55e",
-          padding:6,
-          borderRadius:10,
-          textAlign:"center",
-          fontWeight:"bold",
-          color:"#000"
-        }}>{percent}%</div>
+      <div style={styles.progressWrap}>
+        <div style={{...styles.progressBar, width: percent+"%"}}>
+          {percent}%
+        </div>
       </div>
     );
   }
 
   // ================= HOME =================
-
-  if (step === "home") return (
+  if (step==="home") return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Queridômetro da Panela</h1>
-      <p style={styles.subtitle}>📅 {todayFormatted}</p>
+      <h1 style={styles.title}>Queridômetro 🔥</h1>
+      <p style={styles.subtitle}>Hoje: {todayFormatted}</p>
 
       <button style={styles.mainBtn} onClick={()=>setStep("login")}>Responder</button>
-      <button style={styles.mainBtnOutline} onClick={()=>setStep("results")}>Resultados Hoje</button>
-      <button style={styles.mainBtnOutline} onClick={()=>setStep("history")}>Histórico de Ontem</button>
+      <button style={styles.secondaryBtn} onClick={()=>setStep("results")}>Resultados Hoje</button>
+      <button style={styles.secondaryBtn} onClick={()=>setStep("history")}>Histórico Ontem</button>
+      <button style={styles.secondaryBtn} onClick={()=>setStep("reset")}>Esqueci Senha</button>
     </div>
   );
 
   // ================= LOGIN =================
-
-  if (step === "login") return (
+  if (step==="login") return (
     <div style={styles.container}>
-      <h2>Identificação</h2>
+      <h2>Entrar</h2>
 
-      <select style={styles.select} value={currentUser} onChange={e=>setCurrentUser(e.target.value)}>
+      <select style={styles.input} value={currentUser} onChange={e=>setCurrentUser(e.target.value)}>
         <option value="">Selecione seu nome</option>
         {PEOPLE.map(p=><option key={p}>{p}</option>)}
       </select>
@@ -180,49 +174,58 @@ export default function App() {
       <input style={styles.input} type="password" placeholder="Senha"
         value={password} onChange={e=>setPassword(e.target.value)} />
 
-      <button style={styles.mainBtn} onClick={async ()=>{
+      <button style={styles.mainBtn} onClick={async()=>{
         const user = await checkUser(currentUser);
-        if (!user) return setStep("register");
-        if (user.password !== password) return alert("Senha incorreta");
-        if (await verifyVoteToday(currentUser)) return alert("Já votou hoje");
+        if(!user) return setStep("register");
+        if(user.password!==password) return alert("Senha errada");
+        if(await verifyVoteToday(currentUser)) return alert("Já votou hoje!");
         setStep("vote");
-      }}>
-        Entrar
-      </button>
+      }}>Entrar</button>
     </div>
   );
 
   // ================= REGISTER =================
-
-  if (step === "register") return (
+  if (step==="register") return (
     <div style={styles.container}>
-      <h2>Criar senha</h2>
-      <p>Primeiro acesso de <b>{currentUser}</b></p>
-
+      <h2>Criar Senha</h2>
       <input style={styles.input} type="password" placeholder="Nova senha"
         value={password} onChange={e=>setPassword(e.target.value)} />
-
-      <button style={styles.mainBtn} onClick={async ()=>{
+      <button style={styles.mainBtn} onClick={async()=>{
         await createUser(currentUser, password);
         setStep("vote");
-      }}>
-        Salvar e Votar
-      </button>
+      }}>Salvar</button>
+    </div>
+  );
+
+  // ================= RESET PASSWORD =================
+  if (step==="reset") return (
+    <div style={styles.container}>
+      <h2>Resetar Senha</h2>
+
+      <select style={styles.input} value={currentUser} onChange={e=>setCurrentUser(e.target.value)}>
+        <option value="">Seu nome</option>
+        {PEOPLE.map(p=><option key={p}>{p}</option>)}
+      </select>
+
+      <input style={styles.input} placeholder="Código secreto do ADM"
+        value={resetCode} onChange={e=>setResetCode(e.target.value)} />
+
+      <input style={styles.input} type="password" placeholder="Nova senha"
+        value={newPass} onChange={e=>setNewPass(e.target.value)} />
+
+      <button style={styles.mainBtn} onClick={resetPassword}>Resetar</button>
     </div>
   );
 
   // ================= VOTING =================
-
-  if (step === "vote") {
+  if (step==="vote") {
     const progress = Object.keys(selected).length;
-    const total = PEOPLE.length - 1;
+    const total = PEOPLE.length-1;
 
     return (
       <div style={styles.container}>
-        <h2>Distribua seus emojis</h2>
-        <p>Votando como <b>{currentUser}</b></p>
-
-        <p>Progresso {progress}/{total}</p>
+        <h2>Distribua os emojis</h2>
+        <p>{progress}/{total}</p>
         <ProgressBar value={progress} max={total} />
 
         {PEOPLE.filter(p=>p!==currentUser).map(person=>(
@@ -231,11 +234,8 @@ export default function App() {
             <div style={styles.emojiRow}>
               {EMOJIS.map(e=>(
                 <button key={e}
-                  style={{
-                    ...styles.emojiBtn,
-                    background:selected[person]===e?"#22c55e":"#222",
-                    transform:selected[person]===e?"scale(1.2)":"scale(1)"
-                  }}
+                  style={{...styles.emojiBtn,
+                    background:selected[person]===e?"#22c55e":"#222"}}
                   onClick={()=>setSelected({...selected,[person]:e})}>
                   {e}
                 </button>
@@ -245,80 +245,78 @@ export default function App() {
         ))}
 
         <button disabled={progress!==total}
-          style={{...styles.mainBtn, background: progress===total?"#22c55e":"#555"}}
+          style={{...styles.mainBtn,opacity:progress===total?1:0.5}}
           onClick={submitVote}>
-          Finalizar e Enviar
+          Enviar
         </button>
       </div>
     );
   }
 
   // ================= RESULTS TODAY =================
-
-  if (step === "results") {
-    if (voteCount < MIN_VOTERS_TO_SHOW)
-      return (
-        <div style={styles.container}>
-          <h2>Resultados bloqueados</h2>
-          <p>Já votaram: {voteCount}/{MIN_VOTERS_TO_SHOW}</p>
-          <ProgressBar value={voteCount} max={MIN_VOTERS_TO_SHOW}/>
-          <button style={styles.mainBtnOutline} onClick={()=>setStep("home")}>Voltar</button>
-        </div>
-      );
+  if (step==="results") {
+    if (voteCount<MIN_VOTERS_TO_SHOW) return (
+      <div style={styles.container}>
+        <h2>Resultados bloqueados</h2>
+        <p>{voteCount}/{MIN_VOTERS_TO_SHOW} votantes</p>
+        <ProgressBar value={voteCount} max={MIN_VOTERS_TO_SHOW} />
+      </div>
+    );
 
     return (
       <div style={styles.container}>
-        <h2>Resultados de Hoje</h2>
+        <h2>Resultados Hoje</h2>
+        <p>📅 {todayFormatted}</p>
+
         {PEOPLE.map(p=>(
           <div key={p} style={styles.card}>
             <h3>{p}</h3>
-            {EMOJIS.map(e=>
-              <span key={e} style={{marginRight:12}}>{e} {votesToday[p]?.[e]||0}</span>
-            )}
+            {EMOJIS.map(e=><span key={e}>{e} {votes[p]?.[e]||0} </span>)}
           </div>
         ))}
-        <button style={styles.mainBtnOutline} onClick={()=>setStep("home")}>Voltar</button>
       </div>
     );
   }
 
   // ================= HISTORY YESTERDAY =================
-
-  if (step === "history") return (
+  if (step==="history") return (
     <div style={styles.container}>
       <h2>Histórico de Ontem</h2>
+      <p>📅 {yesterdayFormatted}</p>
 
-      <h3>🏆 Ranking Geral</h3>
-      {rankingYesterday.map((p,i)=>(
-        <div key={p.name} style={styles.card}>
-          #{i+1} {p.name} — {p.total} emojis
-        </div>
-      ))}
-
-      <h3>🔥 Top por Emoji</h3>
-      {Object.entries(topEmojiYesterday).map(([emoji,data])=>(
+      <h3>🏆 TOP por Emoji</h3>
+      {Object.entries(yesterdayTop).map(([emoji, list])=>(
         <div key={emoji} style={styles.card}>
-          {emoji} → {data.name} ({data.total})
+          <h4>{emoji}</h4>
+          {list.map(([name, count])=>
+            <p key={name}>{name} ({count})</p>
+          )}
         </div>
       ))}
 
-      <button style={styles.mainBtnOutline} onClick={()=>setStep("home")}>Voltar</button>
+      <h3>📊 Resultado Geral</h3>
+      {PEOPLE.map(p=>(
+        <div key={p} style={styles.card}>
+          <h4>{p}</h4>
+          {EMOJIS.map(e=><span key={e}>{e} {yesterdayVotes[p]?.[e]||0} </span>)}
+        </div>
+      ))}
     </div>
   );
 }
 
 // ================= STYLE =================
-
 const styles = {
-  container:{ maxWidth:720, margin:"40px auto", textAlign:"center", fontFamily:"Inter, sans-serif", color:"#fff" },
-  title:{ fontSize:34, fontWeight:"bold" },
-  subtitle:{ opacity:0.7 },
-  card:{ background:"#111", padding:14, marginBottom:10, borderRadius:14 },
-  emojiRow:{ display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center" },
-  emojiBtn:{ fontSize:26, padding:10, borderRadius:12, border:"none", cursor:"pointer", transition:"0.15s" },
-  input:{ padding:12, borderRadius:10, border:"none", margin:8, width:"100%" },
-  select:{ padding:12, borderRadius:10, border:"none", margin:8, width:"100%" },
-  mainBtn:{ fontSize:18, padding:"12px 22px", borderRadius:12, border:"none", cursor:"pointer", marginTop:12 },
-  mainBtnOutline:{ fontSize:16, padding:"10px 18px", borderRadius:12, border:"1px solid #22c55e", background:"transparent", color:"#22c55e", cursor:"pointer", marginTop:12 }
+  container:{ maxWidth:760, margin:"40px auto", color:"#fff", fontFamily:"Inter, sans-serif" },
+  title:{ fontSize:36, fontWeight:800 },
+  subtitle:{ opacity:.7 },
+  card:{ background:"#111", padding:16, borderRadius:14, marginBottom:12, boxShadow:"0 0 15px #000" },
+  emojiRow:{ display:"flex", flexWrap:"wrap", gap:10 },
+  emojiBtn:{ fontSize:26, padding:10, borderRadius:12, border:"none", cursor:"pointer" },
+  input:{ padding:12, borderRadius:12, border:"none", margin:6, width:"100%" },
+  mainBtn:{ padding:"12px 22px", borderRadius:14, border:"none", background:"#22c55e", color:"#000", fontSize:18, cursor:"pointer", marginTop:10 },
+  secondaryBtn:{ padding:"10px 18px", borderRadius:12, border:"1px solid #22c55e", background:"transparent", color:"#22c55e", margin:6, cursor:"pointer" },
+  progressWrap:{ width:"100%", background:"#222", borderRadius:10 },
+  progressBar:{ background:"#22c55e", padding:6, borderRadius:10, color:"#000", fontWeight:"bold" }
 };
 
