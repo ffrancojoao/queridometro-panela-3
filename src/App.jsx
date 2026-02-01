@@ -10,7 +10,7 @@ const PEOPLE = [
 ].sort((a,b)=>a.localeCompare(b));
 
 const EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🍪","🪴","🎯","🍌","💣"];
-const MIN_VOTERS_TO_SHOW = 5;
+const MIN_VOTERS = 5;
 // =========================================
 
 export default function App() {
@@ -149,7 +149,7 @@ export default function App() {
 
   if (step === "home") return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Queridômetro (Rançômetro) da Panela!</h1>
+      <h1 style={styles.title}>Queridômetro dxs Gaymers</h1>
       <p style={styles.date}>📅 {todayFormatted}</p>
 
       <button style={styles.mainBtn} onClick={()=>goStep("login")}>Responder</button>
@@ -364,3 +364,4 @@ const styles = {
   topTable:{ display:"grid", gridTemplateColumns:"1fr 3fr", gap:8, background:"#111", padding:12, borderRadius:16, marginBottom:16 },
   topRow:{ display:"contents" }
 };
+
