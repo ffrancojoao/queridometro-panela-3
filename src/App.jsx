@@ -3,12 +3,14 @@ import { supabase } from "./supabase";
 
 // ================= CONFIG =================
 const PEOPLE = [
-  "Augusto","Cris Lage","Gabriela","Giovanna","Hanna","Helo","Janja",
-  "Joao","Juan","Juliete","Karina","Mari","Silas","Vini"
+  "Adriano","Ander","Borda","Chico","Daniel","Diogo","Dru","Eric Aquiar",
+  "Fear","Felype","Flausino","Giordano","Kazuhiro","Marcos","Mello","Paulo",
+  "Pelicano","Pepeu","Prince","Red","Reinaldo","Rod. Rosa","Samuel",
+  "Smile","Tibor","Uekawa","Valbert","Victor"
 ].sort((a,b)=>a.localeCompare(b));
 
 const EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🍪","🪴","🎯","🍌","💣"];
-const MIN_VOTERS = 5;
+const MIN_VOTERS_TO_SHOW = 5;
 // =========================================
 
 export default function App() {
@@ -147,7 +149,7 @@ export default function App() {
 
   if (step === "home") return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Queridômetro dxs Gaymers</h1>
+      <h1 style={styles.title}>Queridômetro (Rançômetro) da Panela!</h1>
       <p style={styles.date}>📅 {todayFormatted}</p>
 
       <button style={styles.mainBtn} onClick={()=>goStep("login")}>Responder</button>
@@ -297,5 +299,68 @@ export default function App() {
         {!blocked && PEOPLE.map(p=>(
           <div key={p} style={styles.card}>
             <h3>{p}</h3>
-            {EMOJIS.map(
-::contentReference[oaicite:0]{index=0}
+            {EMOJIS.map(e=>(<span key={e} style={{marginRight:12}}>{e} {votes[p]?.[e]||0}</span>))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ================= HISTORY =================
+
+  if (step === "history") return (
+    <div style={styles.container}>
+      <TopBack/>
+
+      <h2>Resultados (anterior)</h2>
+      <p style={styles.date}>📅 {yesterdayFormatted}</p>
+
+      <h3>Top por Emoji</h3>
+      <div style={styles.topTable}>
+        {EMOJIS.map(e=>{
+          const ranking = Object.entries(yesterdayVotes).map(([name,obj])=>({name, count: obj?.[e]||0})).sort((a,b)=>b.count-a.count);
+          const max = ranking[0]?.count || 0;
+          const winners = ranking.filter(r=>r.count===max && max>0).map(r=>r.name).join(", ");
+          return (
+            <div key={e} style={styles.topRow}>
+              <span style={{fontWeight:"bold"}}>{e}</span>
+              <span>{max>0?`${winners} (${max})`:"-"}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <h3>Resultados Gerais</h3>
+      {PEOPLE.map(p=>(
+        <div key={p} style={styles.card}>
+          <h4>{p}</h4>
+          {EMOJIS.map(e=>(<span key={e} style={{marginRight:12}}>{e} {yesterdayVotes[p]?.[e]||0}</span>))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ================= STYLE =================
+
+const styles = {
+  container:{ maxWidth:760, margin:"40px auto", textAlign:"center", fontFamily:"Inter, sans-serif", color:"#fff" },
+  title:{ fontSize:36, fontWeight:"bold" },
+  date:{ opacity:0.7, marginBottom:10 },
+
+  card:{ background:"rgba(17,17,17,0.9)", padding:16, marginBottom:12, borderRadius:18, boxShadow:"0 10px 30px rgba(0,0,0,0.6)" },
+  emojiRow:{ display:"flex", flexWrap:"wrap", gap:10, justifyContent:"center" },
+  emojiBtn:{ fontSize:26, padding:10, borderRadius:12, border:"none", cursor:"pointer", transition:"0.15s", backdropFilter:"blur(6px)" },
+
+  input:{ padding:12, borderRadius:12, border:"none", margin:8, width:"100%" },
+  select:{ padding:12, borderRadius:12, border:"none", margin:8, width:"100%" },
+
+  mainBtn:{ fontSize:18, padding:"12px 22px", borderRadius:16, border:"none", cursor:"pointer", marginTop:12, background:"linear-gradient(90deg,#22c55e,#16a34a)", color:"#000", fontWeight:"bold" },
+  mainBtnOutline:{ fontSize:16, padding:"10px 18px", borderRadius:16, border:"1px solid #22c55e", background:"transparent", color:"#22c55e", cursor:"pointer", marginTop:12 },
+
+  backTopBtn:{ padding:"6px 16px", borderRadius:12, border:"1px solid #333", background:"rgba(255,255,255,0.03)", color:"#aaa", cursor:"pointer" },
+
+  blockedBox:{ background:"#111", padding:16, borderRadius:16, marginBottom:12 },
+  topTable:{ display:"grid", gridTemplateColumns:"1fr 3fr", gap:8, background:"#111", padding:12, borderRadius:16, marginBottom:16 },
+  topRow:{ display:"contents" }
+};
