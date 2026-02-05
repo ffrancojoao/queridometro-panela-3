@@ -3,10 +3,10 @@ import { supabase } from "./supabase";
 
 // ================= CONFIG =================
 const PEOPLE = [
-  "Adriano","Ander","Borda","Chico","Daniel","Diogo","Dru","Eric Aquiar",
-  "Fear","Felype","Flausino","Giordano","Kazuhiro","Marcos","Mello","Paulo",
-  "Pelicano","Pepeu","Prince","Red","Reinaldo","Rod. Rosa","Samuel",
-  "Smile","Tibor","Uekawa","Valbert","Victor"
+  "Adriano","Ander","Borda","Chico","Daniel","Dru",
+  "Felype","Flausino","Giordano","Kazuhiro","Marcos","Paulo",
+  "Pelicano","Pepeu","Prince","Red","Reinaldo",
+  "Smile","Tibor","Valbert","Victor"
 ].sort((a,b)=>a.localeCompare(b));
 
 const EMOJIS = ["❤️","🤥","🤮","🐍","👜","💔","🍪","🪴","🎯","🍌","💣"];
